@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bus Detector</title>
+    <title>PWA Bus Detector</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#007bff">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -26,6 +26,9 @@
             display: block;
         }
     </style>
+
+    <!-- This is the favicon that will be visible in the browser tab. -->
+    <link rel="icon" type="image/x-icon" href="https://placehold.co/32x32/007bff/ffffff?text=B">
 </head>
 <body class="bg-gray-100 text-gray-800">
 
@@ -33,18 +36,22 @@
         <h1 class="text-3xl font-bold text-center mb-4">Bus Detector</h1>
 
         <div id="camera-container" class="shadow-lg">
-            <video id="camera-view" autoplay playsinline></video>
+            <!-- The video element will remain hidden until camera is turned on -->
+            <video id="camera-view" autoplay playsinline class="hidden"></video>
+            <div id="camera-placeholder" class="w-full h-64 bg-gray-300 flex items-center justify-center text-gray-600 rounded-md">
+                Camera is off. Click "Turn Camera On" to start.
+            </div>
         </div>
 
         <div class="text-center mt-4">
-             <button id="toggle-camera-button" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-full">
-                Turn Camera Off
+             <button id="toggle-camera-button" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-full">
+                Turn Camera On
             </button>
         </div>
 
         <div id="result-container" class="mt-4 p-4 bg-white rounded-lg shadow-md min-h-[6rem]">
             <h2 class="text-2xl font-semibold mb-2">Status:</h2>
-            <p id="result-text">Starting camera...</p>
+            <p id="result-text">Camera is currently off.</p>
         </div>
 
         <canvas id="canvas" class="hidden"></canvas>
@@ -71,6 +78,7 @@
         // --- DOM Element References ---
         // Get references to key HTML elements for manipulation.
         const cameraView = document.getElementById('camera-view');
+        const cameraPlaceholder = document.getElementById('camera-placeholder'); // New placeholder element
         const toggleCameraButton = document.getElementById('toggle-camera-button');
         const resultContainer = document.getElementById('result-container');
         const resultText = document.getElementById('result-text');
@@ -79,7 +87,7 @@
 
         // --- State Management ---
         // Variables to manage the application's state.
-        let isCameraOn = false;
+        let isCameraOn = false; // Camera is OFF by default
         let detectionInterval = null; // Stores the interval ID for periodic detection.
         let stream = null; // Stores the MediaStream object from the camera.
 
@@ -88,10 +96,18 @@
         async function startCamera() {
             if (isCameraOn) return; // Prevent starting camera if already on.
             try {
+                // IMPORTANT FOR MOBILE DEVICES:
+                // Camera access (getUserMedia) typically requires the page to be served over HTTPS.
+                // If you are running this code from a local file (file://) or an insecure HTTP server,
+                // camera access might be blocked by the browser for security reasons.
+                // Also, ensure you grant camera permissions when prompted by your browser.
+
                 // Request access to the user's camera, preferring the environment-facing camera.
                 const constraints = { video: { facingMode: 'environment' } };
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
                 cameraView.srcObject = stream; // Set the video element's source to the camera stream.
+                cameraView.classList.remove('hidden'); // Show the video element
+                cameraPlaceholder.classList.add('hidden'); // Hide the placeholder
                 isCameraOn = true;
                 toggleCameraButton.textContent = 'Turn Camera Off';
                 toggleCameraButton.classList.replace('bg-green-500', 'bg-red-500');
@@ -104,6 +120,13 @@
             } catch (err) {
                 console.error("Error accessing camera: ", err);
                 resultText.textContent = "Could not access the camera. Please grant permission and try again.";
+                // Revert button state if camera access fails
+                toggleCameraButton.textContent = 'Turn Camera On';
+                toggleCameraButton.classList.replace('bg-red-500', 'bg-green-500');
+                toggleCameraButton.classList.replace('hover:bg-red-700', 'hover:bg-green-700');
+                cameraView.classList.add('hidden'); // Ensure video is hidden
+                cameraPlaceholder.classList.remove('hidden'); // Show placeholder
+                isCameraOn = false;
             }
         }
 
@@ -112,6 +135,8 @@
             if (!isCameraOn || !stream) return; // Prevent stopping if camera is already off or no stream.
             stream.getTracks().forEach(track => track.stop()); // Stop all tracks in the stream.
             cameraView.srcObject = null; // Clear the video element's source.
+            cameraView.classList.add('hidden'); // Hide the video element
+            cameraPlaceholder.classList.remove('hidden'); // Show the placeholder
             isCameraOn = false;
             toggleCameraButton.textContent = 'Turn Camera On';
             toggleCameraButton.classList.replace('bg-red-500', 'bg-green-500');
@@ -154,7 +179,7 @@
         // Uses the Web Speech API to speak the given text.
         function speakText(text) {
             if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(text); // Corrected typo here
+                const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'en-US'; // Set the language for speech.
                 speechSynthesis.speak(utterance);
             } else {
@@ -166,7 +191,7 @@
         // Sends the captured image to the Gemini API for bus detection.
         async function findBusInImage(base64ImageData) {
             // IMPORTANT: Leave this API key empty. The Canvas environment will provide it at runtime.
-            const apiKey = "AIzaSyCpjnEIzSjT2wN67Th31LfxIxaKUszqczk"; 
+            const apiKey = ""; 
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             // Construct the payload for the Gemini API request.
@@ -242,8 +267,8 @@
         }
 
         // --- Initialize the app ---
-        // Starts the camera when the page loads.
-        startCamera();
+        // No auto-start: Camera is off by default.
+        // The button will trigger startCamera() when clicked.
 
     </script>
 
