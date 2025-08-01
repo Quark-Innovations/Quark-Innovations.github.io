@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bus Detector</title>
+    <title>PWA Bus Detector</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#007bff">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -172,7 +172,7 @@
             context.drawImage(cameraView, 0, 0, canvas.width, canvas.height);
             // Get the image data as a base64 string (JPEG format).
             const imageData = canvas.toDataURL('image/jpeg').split(',')[1];
-            await findBusInImage(imageData); // Send the image data to Gemini API.
+            await findBusInImage(imageData); // Send the image data to Flask backend.
         }
 
         // --- Speech Synthesis Function ---
@@ -187,82 +187,49 @@
             }
         }
 
-        // --- Gemini API Call for Bus Detection ---
-        // Sends the captured image to the Gemini API for bus detection.
+        // --- Flask Backend Call for Bus Detection ---
+        // Sends the captured image to the Flask backend for bus detection.
         async function findBusInImage(base64ImageData) {
-            // IMPORTANT: Leave this API key empty. The Canvas environment will provide it at runtime.
-            const apiKey = "AIzaSyCpjnEIzSjT2wN67Th31LfxIxaKUszqczk"; 
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            // Construct the payload for the Gemini API request.
-            const payload = {
-                contents: [{
-                    parts: [{
-                        text: "Analyze the image for a public transport bus. Respond in JSON format. If a bus is visible, set 'bus_detected' to true and extract the bus route number and its destination if they are visible. If no bus is present, set 'bus_detected' to false. Set 'bus_number' and 'destination' to null if not visible."
-                    }, {
-                        inlineData: {
-                            mimeType: "image/jpeg",
-                            data: base64ImageData
-                        }
-                    }]
-                }],
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            "bus_detected": { "type": "BOOLEAN" },
-                            "bus_number": { "type": "STRING" },
-                            "destination": { "type": "STRING" }
-                        },
-                        required: ["bus_detected"]
-                    }
-                }
-            };
+            // Point to your Flask backend endpoint
+            const backendUrl = 'https://madnira.pythonanywhere.com/analyze_image'; // Adjust if your Flask app runs on a different host/port
 
             try {
-                // Make the API call to Gemini.
-                const response = await fetch(apiUrl, {
+                const response = await fetch(backendUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ imageData: base64ImageData })
                 });
 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const errorData = await response.json();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error || 'Unknown error'}`);
                 }
 
-                const data = await response.json();
-                const part = data?.candidates?.[0]?.content?.parts?.[0];
-                
-                if (part && part.text) {
-                    const result = JSON.parse(part.text);
-                    if (result.bus_detected) {
-                        const busNumber = result.bus_number || null;
-                        const destination = result.destination || null;
-                        let displayText = "Bus is coming!";
-                        if(busNumber) {
-                           displayText += ` Number: ${busNumber}`;
-                        }
-                        if(destination) {
-                           displayText += ` - Destination: ${destination}`;
-                        }
-                        if(!busNumber && !destination) {
-                            displayText += " (Details not visible)";
-                        }
-                        resultText.textContent = displayText;
-                        speakText(displayText); // Speak the detected information aloud.
-                    } else {
-                        resultText.textContent = 'No bus detected in the latest scan.';
-                        // Optional: Add a sound or speech for "no bus detected" here.
+                const result = await response.json(); // Flask backend directly returns the parsed JSON
+
+                if (result.bus_detected) {
+                    const busNumber = result.bus_number || null;
+                    const destination = result.destination || null;
+                    let displayText = "Bus is coming!";
+                    if(busNumber) {
+                       displayText += ` Number: ${busNumber}`;
                     }
+                    if(destination) {
+                       displayText += ` - Destination: ${destination}`;
+                    }
+                    if(!busNumber && !destination) {
+                        displayText += " (Details not visible)";
+                    }
+                    resultText.textContent = displayText;
+                    speakText(displayText); // Speak the detected information aloud.
                 } else {
-                    resultText.textContent = 'Analysis complete. No bus detected.';
+                    resultText.textContent = 'No bus detected in the latest scan.';
+                    // Optional: Add a sound or speech for "no bus detected" here.
                 }
 
             } catch (error) {
-                console.error("Error calling Gemini API:", error);
-                resultText.textContent = "An error occurred while calling Gemini.";
+                console.error("Error calling backend API:", error);
+                resultText.textContent = `An error occurred while calling the backend: ${error.message}`;
             }
         }
 
@@ -276,7 +243,7 @@
     <!-- This script dynamically creates and attaches the web app manifest. -->
     <script>
         const manifest = {
-            "name": "PWA Bus Detector",
+            "name": "Bus Detector",
             "short_name": "Bus Detector",
             "start_url": "index.html",
             "display": "standalone",
